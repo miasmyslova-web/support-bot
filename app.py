@@ -26,33 +26,23 @@ HISTORY = defaultdict(list)
 PROFILES = {}
 ONBOARDED = set()
 
-# ===== ДИНАМИЧЕСКИЙ СПИСОК МОДЕЛЕЙ =====
-# Бот сам запросит список у Groq при запуске
 MODELS = []
 
 def load_models():
-    """Запрашивает у Groq список доступных чат-моделей."""
     try:
         response = client.models.list()
         all_models = [m.id for m in response.data]
-        
-        # Фильтруем: исключаем Whisper (голос), TTS и прочие не-чат модели
         chat_models = []
         for m in all_models:
-            # Оставляем только текстовые модели для диалога
-            if any(x in m for x in ["whisper", "tts", "embedding", "guard", "whisper"]):
+            if any(x in m for x in ["whisper", "tts", "embedding", "guard"]):
                 continue
             chat_models.append(m)
-        
-        # Если ничего не осталось — оставляем fallback
         if not chat_models:
             chat_models = ["openai/gpt-oss-20b"]
-        
         print(f"[MODELS] Доступно: {chat_models}")
         return chat_models
     except Exception as e:
         print(f"[MODELS ERROR] {type(e).__name__}: {e}")
-        # Fallback — если не смогли получить список
         return ["openai/gpt-oss-20b", "openai/gpt-oss-120b"]
 
 VOICE_MODEL = "whisper-large-v3"
@@ -89,7 +79,7 @@ def parse_age(text: str):
     if not numbers:
         words = {
             "шесть": 6, "семь": 7, "восемь": 8, "девять": 9, "десять": 10,
-            "одиннадцать": 11, " ageдвенадцать":  <12, "тринадцать": 13, "четырнадцать": 14,
+            "одиннадцать": 11, "двенадцать": 12, "тринадцать": 13, "четырнадцать": 14,
             "пятнадцать": 15, "шестнадцать": 16, "семнадцать": 17, "восемнадцать": 18,
             "девятнадцать": 19, "двадцать": 20, "тридцать": 30, "сорок": 40,
             "пятьдесят": 50, "шестьдесят": 60, "семьдесят": 70,
@@ -101,14 +91,14 @@ def parse_age(text: str):
     age = int(numbers[0])
     if 1 <= age <= 120:
         return age
-     return None
+    return None
 
-def get_age_group(age: int46) ->: str:
-    if age < 13: return " returnchild"
+def get_age_group(age: int) -> str:
+    if age < 13: return "child"
     elif age < 18: return "teen"
-    " elif age < 26: return "young"
-adult"
-    elif    elif age < 61: return "middle"
+    elif age < 26: return "young"
+    elif age < 46: return "adult"
+    elif age < 61: return "middle"
     else: return "older"
 
 def sys_prompt(age=None, style="soft"):
@@ -378,7 +368,6 @@ async def main():
     await web.TCPSite(runner, "0.0.0.0", port).start()
     print(f"=== WEB SERVER ON PORT {port} ===")
     
-    # Загружаем актуальный список моделей
     global MODELS
     MODELS = load_models()
     print(f"=== ЗАГРУЖЕНО {len(MODELS)} МОДЕЛЕЙ ===")

@@ -26,7 +26,6 @@ HISTORY = defaultdict(list)
 PROFILES = {}
 ONBOARDED = set()
 
-# ===== РАБОЧИЕ МОДЕЛИ GROQ =====
 MODELS = [
     "llama-3.3-70b-versatile",
     "llama-3.1-8b-instant",

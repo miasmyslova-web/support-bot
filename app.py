@@ -101,58 +101,78 @@ def get_age_group(age: int) -> str:
     elif age < 61: return "middle"
     else: return "older"
 
+# ===== ПРОМПТЫ ПО СТИЛЮ =====
 def sys_prompt(age=None, style="soft"):
-    base = "Ты — эмпатичный ассистент-психолог. Не ставь диагнозы. Отвечай тепло, по-человечески. Помни контекст разговора."
+    # Базовый — для мягкого стиля
+    if style == "wise":
+        base = (
+            "Ты — умный, объективный и конструктивный ассистент-психолог. "
+            "Твоя задача — помочь человеку разобраться в ситуации, а не просто пожалеть. "
+            "Говори прямо, по делу, без воды. "
+            "Будь честным: если видишь, что человек сам создаёт проблему — скажи это мягко, но ясно. "
+            "Предлагай конкретные шаги, варианты, точки зрения. "
+            "Не льсти, не соглашайся автоматически, не бойся возразить. "
+            "Будь как мудрый друг, который уважает человека и верит, что он справится. "
+            "Отвечай коротко — 2-4 предложения, если не просят подробнее. "
+            "Не ставь диагнозы. Помни контекст."
+        )
+    elif style == "direct":
+        base = (
+            "Ты — ассистент-психолог. Говоришь прямо, по делу, без лишних эмоций. "
+            "Помогаешь разобраться в ситуации, задаёшь точные вопросы. "
+            "Не льстишь, не гладишь по голове. Не ставишь диагнозы. Помни контекст."
+        )
+    elif style == "humor":
+        base = (
+            "Ты — ассистент-психолог с лёгким юмором. "
+            "Можешь мягко пошутить, но не вместо эмпатии. "
+            "Помогаешь разобраться, поддерживаешь. Не ставишь диагнозы. Помни контекст."
+        )
+    else:  # soft
+        base = (
+            "Ты — эмпатичный ассистент-психолог. "
+            "Отвечай тепло, по-человечески. Поддерживаешь, слушаешь. "
+            "Не ставишь диагнозы. Помни контекст."
+        )
+    
     if age is None:
         age_add = ""
     else:
         group = get_age_group(age)
         age_additions = {
             "child": (
-                f" Пользователю {age} лет — это РЕБЁНОК. "
-                "Говори ОЧЕНЬ простыми словами, короткими фразами. "
-                "Никаких сложных терминов. Будь как добрый старший друг. "
-                "Много эмодзи. Спрашивай про родителей, если серьёзное."
+                f" Пользователю {age} лет — РЕБЁНОК. "
+                "Говори ОЧЕНЬ простыми словами. Много эмодзи."
             ),
             "teen": (
                 f" Пользователю {age} лет — ПОДРОСТОК. "
-                "Говори простым, современным языком — как старший друг. "
-                "Не читай нотаций, не обесценивай проблемы. "
-                "У подростков сильные эмоции — будь бережен."
+                "Говори простым, современным языком. Без нотаций."
             ),
             "young": (
                 f" Пользователю {age} лет — 18-25. "
-                "На равных, современно, с теплотой. Можно лёгкие метафоры и юмор. "
-                "Темы: учёба, работа, отношения, поиск себя."
+                "На равных, современно."
             ),
             "adult": (
                 f" Пользователю {age} лет — взрослый. "
-                "Уважительно, по-взрослому. Можно сложные темы: работа, семья, выгорание, родительство."
+                "Уважительно, по-взрослому."
             ),
             "middle": (
-                f" Пользователю {age} лет. "
-                "Уважительно, тепло. Признавай жизненный опыт. "
-                "Темы: дети выросли, здоровье, смысл, потери."
+                f" Пользователю {age} лет. Уважительно, тепло."
             ),
             "older": (
                 f" Пользователю {age} лет — старший возраст. "
-                "Уважительно, тепло, без сюсюканья. Признавай опыт. "
-                "Говори чуть медленнее. Темы: здоровье, одиночество, внуки, воспоминания."
+                "Уважительно, не спеша."
             ),
         }
         age_add = age_additions.get(group, "")
-    style_additions = {
-        "soft": " Общайся мягко и бережно.",
-        "direct": " Общайся прямо и по делу.",
-        "humor": " Можно легко и с юмором.",
-    }
-    return base + age_add + style_additions.get(style, "")
+    return base + age_add
 
 def kb_style():
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🤍 Мягко", callback_data="style_soft"),
          InlineKeyboardButton(text="💬 Прямо", callback_data="style_direct")],
         [InlineKeyboardButton(text="✨ С юмором", callback_data="style_humor")],
+        [InlineKeyboardButton(text="🧠 Мудрый (объективный)", callback_data="style_wise")],
     ])
 
 def kb_main():
@@ -190,11 +210,36 @@ async def help_cmd(m: types.Message):
         "/тело — сканирование тела\n"
         "/релакс — прогрессивная релаксация\n\n"
         "🎤 Голосовые — просто отправь.\n\n"
+        "🧠 Меняй стиль:\n"
+        "/wise — мудрый и объективный\n"
+        "/soft — мягкий и тёплый\n"
+        "/direct — прямой и деловой\n"
+        "/humor — с юмором\n\n"
         "👤 /profile — что я о тебе знаю\n"
         "🧹 /reset — начать заново\n\n"
         "📞 Телефон доверия: 8-800-2000-122\n"
         "⚠️ Я не заменяю живого специалиста."
     )
+
+@dp.message(Command("wise"))
+async def wise_cmd(m: types.Message):
+    PROFILES.setdefault(m.chat.id, {})["style"] = "wise"
+    await m.answer("🧠 Включил режим «Мудрый».\n\nТеперь я буду отвечать объективно, конструктивно и по делу. Без лишних сюсюканий. Если что-то не так — скажу прямо.\n\nО чём хочешь поговорить?")
+
+@dp.message(Command("soft"))
+async def soft_cmd(m: types.Message):
+    PROFILES.setdefault(m.chat.id, {})["style"] = "soft"
+    await m.answer("🤍 Включил режим «Мягкий».\n\nБуду общаться тепло и бережно. Как ты сейчас?")
+
+@dp.message(Command("direct"))
+async def direct_cmd(m: types.Message):
+    PROFILES.setdefault(m.chat.id, {})["style"] = "direct"
+    await m.answer("💬 Включил режим «Прямой».\n\nБуду говорить по делу. О чём поговорим?")
+
+@dp.message(Command("humor"))
+async def humor_cmd(m: types.Message):
+    PROFILES.setdefault(m.chat.id, {})["style"] = "humor"
+    await m.answer("✨ Включил режим «С юмором».\n\nПостараюсь поддержать с лёгкой улыбкой. Что у тебя?")
 
 @dp.message(Command("profile"))
 async def profile(m: types.Message):
@@ -202,7 +247,7 @@ async def profile(m: types.Message):
     if not p:
         await m.answer("Пока ничего не знаю. /start")
         return
-    styles = {"soft": "мягко", "direct": "прямо", "humor": "с юмором"}
+    styles = {"soft": "мягко", "direct": "прямо", "humor": "с юмором", "wise": "мудрый (объективный)"}
     age = p.get("age", "—")
     group_names = {"child": "ребёнок", "teen": "подросток", "young": "молодой",
                    "adult": "взрослый", "middle": "средний", "older": "старший"}
@@ -239,7 +284,6 @@ async def cb(c: CallbackQuery):
     if d.startswith("style_"):
         PROFILES.setdefault(cid, {})["style"] = d.replace("style_", "")
         ONBOARDED.add(cid)
-        # БЕЗ кнопок — просто текст
         await c.message.answer(
             "Спасибо! Я всё запомнил 🌿\n\n"
             "💡 Что я умею:\n"
@@ -247,8 +291,12 @@ async def cb(c: CallbackQuery):
             "• 🌳 /заземлиться — техника 5-4-3-2-1\n"
             "• 🧘 /тело — сканирование тела\n"
             "• 💪 /релакс — прогрессивная релаксация\n"
-            "• 🎤 Можно отправлять голосовые\n"
-            "• 👤 /profile — что я о тебе знаю\n\n"
+            "• 🎤 Можно отправлять голосовые\n\n"
+            "🧠 Можно менять стиль:\n"
+            "/wise — мудрый и объективный\n"
+            "/soft — мягкий\n"
+            "/direct — прямой\n"
+            "/humor — с юмором\n\n"
             "⚠️ Я — ИИ, не живой психолог. Если плохо — 8-800-2000-122.\n\n"
             "Как ты сейчас?"
         )
@@ -273,18 +321,22 @@ async def process(m: types.Message, text: str):
     add_hist(cid, "user", text)
     await bot.send_chat_action(cid, "typing")
     p = PROFILES.get(cid, {})
-    sysmsg = sys_prompt(p.get("age"), p.get("style", "soft"))
+    style = p.get("style", "soft")
+    sysmsg = sys_prompt(p.get("age"), style)
     if p.get("name"):
         sysmsg += f" Имя: {p['name']}."
     msgs = [{"role": "system", "content": sysmsg}] + HISTORY[cid]
 
+    # Для «мудрого» — короче ответы
+    max_tok = 350 if style == "wise" else 700
+
     for model in MODELS:
         try:
-            r = client.chat.completions.create(model=model, messages=msgs, max_tokens=700)
+            r = client.chat.completions.create(model=model, messages=msgs, max_tokens=max_tok)
             ans = r.choices[0].message.content
             add_hist(cid, "assistant", ans)
             await m.answer(ans)
-            print(f"[OK] {model}")
+            print(f"[OK] {model} ({style})")
             return
         except Exception as e:
             print(f"[AI] {model}: {type(e).__name__}: {e}")

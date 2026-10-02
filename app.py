@@ -10,11 +10,13 @@ from aiohttp import web
 print("=== START ===")
 
 TOKEN = os.getenv("TELEGRAM_TOKEN")
-KEY = os.getenv("OPENROUTER_API_KEY")
+GROQ_KEY = os.getenv("GROQ_API_KEY")
+
+print(f"GROQ key loaded: {'yes' if GROQ_KEY else 'NO'}")
 
 client = OpenAI(
-    base_url="https://openrouter.ai/api/v1",
-    api_key=KEY,
+    base_url="https://api.groq.com/openai/v1",
+    api_key=GROQ_KEY,
 )
 
 bot = Bot(token=TOKEN)
@@ -24,21 +26,17 @@ HISTORY = defaultdict(list)
 PROFILES = {}
 ONBOARDED = set()
 
-# ===== АКТУАЛЬНЫЕ БЕСПЛАТНЫЕ МОДЕЛИ (проверены) =====
+# ===== РАБОЧИЕ МОДЕЛИ GROQ =====
 MODELS = [
-    "deepseek/deepseek-chat-v3-0324:free",
-    "deepseek/deepseek-r1-0528:free",
-    "meta-llama/llama-3.3-70b-instruct:free",
-    "qwen/qwen3-235b-a22b:free",
-    "qwen/qwen3-30b-a3b:free",
-    "google/gemini-2.0-flash-exp:free",
-    "mistralai/mistral-small-3.1-24b-instruct:free",
-    "microsoft/phi-4-reasoning:free",
-    "tngtech/deepseek-r1t-chimera:free",
-    "moonshotai/kimi-k2:free",
+    "llama-3.3-70b-versatile",
+    "llama-3.1-8b-instant",
+    "llama3-70b-8192",
+    "llama3-8b-8192",
+    "gemma2-9b-it",
+    "mixtral-8x7b-32768",
 ]
 
-VOICE_MODEL = "google/gemini-2.0-flash-exp:free"
+VOICE_MODEL = "whisper-large-v3"
 
 CRISIS_WORDS = [
     "умираю", "умереть", "умру", "смерть", "суицид", "самоубий",
@@ -271,7 +269,6 @@ async def process(m: types.Message, text: str):
         sysmsg += f" Имя: {p['name']}."
     msgs = [{"role": "system", "content": sysmsg}] + HISTORY[cid]
 
-    random.shuffle(MODELS)
     for model in MODELS:
         try:
             r = client.chat.completions.create(model=model, messages=msgs, max_tokens=700)
@@ -281,23 +278,17 @@ async def process(m: types.Message, text: str):
             print(f"[OK] {model}")
             return
         except Exception as e:
-            print(f"[AI] {model}: {type(e).__name__}")
+            print(f"[AI] {model}: {type(e).__name__}: {e}")
 
-    await m.answer("Извини, задумался. Попробуй ещё раз через минуту.\n\nЕсли плохо — 8-800-2000-122")
+    await m.answer("Извини, задумался. Попробуй через минуту.\n\nЕсли плохо — 8-800-2000-122")
 
 async def voice_txt(path: str) -> str:
-    import base64
     with open(path, "rb") as f:
-        b64 = base64.b64encode(f.read()).decode()
-    r = client.chat.completions.create(
-        model=VOICE_MODEL,
-        messages=[{"role": "user", "content": [
-            {"type": "text", "text": "Расшифруй голосовое на русском. Только текст."},
-            {"type": "input_audio", "input_audio": {"data": b64, "format": "ogg"}},
-        ]}],
-        max_tokens=500
-    )
-    return r.choices[0].message.content.strip()
+        r = client.audio.transcriptions.create(
+            model=VOICE_MODEL,
+            file=f,
+        )
+    return r.text.strip()
 
 @dp.message(lambda m: m.voice is not None)
 async def voice(m: types.Message):

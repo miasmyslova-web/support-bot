@@ -30,8 +30,7 @@ async def chat_handler(message: types.Message):
     await bot.send_chat_action(message.chat.id, "typing")
     try:
         response = client.chat.completions.create(
-            model="meta-llama/llama-3.3-70b-instruct:free",
-            messages=[
+            model=model="deepseek/deepseek-chat-v3.1:free",
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": message.text}
             ],

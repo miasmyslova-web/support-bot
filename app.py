@@ -26,6 +26,9 @@ HISTORY = defaultdict(list)
 PROFILES = {}
 ONBOARDED = set()
 
+# ===== ПАМЯТЬ =====
+MAX_HISTORY = 40  # было 20 — увеличили
+
 MODELS = []
 
 def load_models():
@@ -47,6 +50,41 @@ def load_models():
 
 VOICE_MODEL = "whisper-large-v3"
 
+# ===== РАЗНЫЕ ВАРИАНТЫ =====
+GREETINGS = [
+    "Привет. Я ИИ-помощник. Тут можно говорить обо всём, без осуждения. Как тебя зовут?",
+    "Здравствуй. Я здесь, чтобы выслушать. Как тебя зовут?",
+    "Привет. Я рядом. Расскажи, как тебя зовут?",
+    "Привет. Я ИИ-помощник, устрою тебе уютное место для разговора. Как тебя зовут?",
+    "Здравствуй. Тут тебя никто не осудит. Как тебя зовут?",
+]
+
+FAREWELLS = [
+    "Спасибо, что поговорил со мной. Береги себя.",
+    "Я рядом, если снова понадоблюсь. Хорошего дня.",
+    "Спасибо за доверие. Заглядывай, когда захочется поговорить.",
+    "Береги себя. Ты важен.",
+    "Было тепло с тобой поговорить. До встречи.",
+    "Отдыхай. Если что — я тут.",
+]
+
+ERROR_REPLIES = [
+    "Ой, я немного задумался. Повтори, пожалуйста.",
+    "Прости, что-то я завис. Напиши ещё раз.",
+    "Извини, я отвлёкся. Что ты хотел сказать?",
+    "Ох, задумался. Повтори, пожалуйста.",
+    "Прости, я тут немного потерялся. Напиши снова.",
+    "Что-то я замер. Давай ещё раз?",
+]
+
+AFTER_ONBOARD = [
+    "Спасибо. Я всё запомнил.\n\nВажно: я ИИ, а не живой психолог. Если будет плохо — 8-800-2000-122.\n\nРасскажи, что у тебя на душе?",
+    "Хорошо, я запомнил.\n\nЯ — ИИ, не живой специалист. Если станет совсем тяжело — 8-800-2000-122.\n\nО чём хочешь поговорить?",
+    "Спасибо. Всё запомнил.\n\nНапомню: я не заменяю живого психолога. Если плохо — 8-800-2000-122.\n\nКак ты сейчас?",
+    "Запомнил. Спасибо.\n\nЯ ИИ, если что-то серьёзное — 8-800-2000-122.\n\nРасскажи, что тебя беспокоит?",
+    "Готово. Я всё сохранил.\n\nЯ ИИ-помощник, не заменяю специалиста. Если тяжело — 8-800-2000-122.\n\nС чего начнём?",
+]
+
 CRISIS_WORDS = [
     "умираю", "умереть", "умру", "смерть", "суицид", "самоубий",
     "не хочу жить", "хочу умереть", "убить себя", "покончить",
@@ -57,10 +95,10 @@ CRISIS_WORDS = [
 CRISIS_REPLY = """Я слышу тебя. То, что ты сейчас чувствуешь — очень тяжело, и ты не один.
 
 Пожалуйста, позвони туда, где помогут живые люди:
-📞 8-800-2000-122 — телефон доверия (круглосуточно, анонимно)
-📞 8-495-989-50-50 — психологическая помощь
-📞 8-800-333-44-34 — Всероссийская линия
-📞 112 — экстренные службы
+8-800-2000-122 — телефон доверия (круглосуточно, анонимно)
+8-495-989-50-50 — психологическая помощь
+8-800-333-44-34 — Всероссийская линия
+112 — экстренные службы
 
 Ты важен. Не оставайся с этим один."""
 
@@ -70,8 +108,8 @@ def is_crisis(t):
 
 def add_hist(cid, role, content):
     HISTORY[cid].append({"role": role, "content": content})
-    if len(HISTORY[cid]) > 20:
-        HISTORY[cid] = HISTORY[cid][-20:]
+    if len(HISTORY[cid]) > MAX_HISTORY:
+        HISTORY[cid] = HISTORY[cid][-MAX_HISTORY:]
 
 def parse_age(text: str):
     text = text.strip().lower()
@@ -102,74 +140,72 @@ def get_age_group(age: int) -> str:
     else: return "older"
 
 def sys_prompt(age=None, style="soft"):
-    base = "Ты — эмпатичный ассистент-психолог. Не ставь диагнозы. Отвечай тепло, по-человечески. Помни контекст разговора."
+    base = (
+        "Ты — тёплый, живой ИИ-помощник. Не называй себя именем, просто ИИ-помощник. "
+        "Говори как человек, а не как учебник. Коротко, естественно, с эмпатией. "
+        "Не ставь диагнозы, не давай медицинских советов. "
+        "Ты — собеседник, а не справочник. "
+        "Твоя задача — создавать уют. Человек должен чувствовать себя в безопасности, "
+        "как будто он пришёл в тихое тёплое место, где его выслушают без осуждения. "
+        "Не пиши «я [имя]», не представляйся именем пользователя. Ты — просто ИИ-помощник. "
+        "Не используй много эмодзи — максимум один-два на сообщение. "
+        "Не пиши списки и нумерации без необходимости. "
+        "Не начинай каждый ответ с шаблонов типа «Я слышу тебя» или «Это тяжело». "
+        "Задавай мягкие открытые вопросы, но не допрашивай. "
+        "Помни контекст разговора."
+    )
     if age is None:
         age_add = ""
     else:
         group = get_age_group(age)
         age_additions = {
             "child": (
-                f" Пользователю {age} лет — это РЕБЁНОК. "
-                "Говори ОЧЕНЬ простыми словами, короткими фразами. "
-                "Никаких сложных терминов. Будь как добрый старший друг. "
-                "Много эмодзи. Спрашивай про родителей, если серьёзное."
+                f" Пользователю {age} лет — это ребёнок. "
+                "Говори простыми словами, короткими фразами, тепло, как добрый старший друг. "
+                "Без сложных терминов. Если серьёзное — советуй поговорить с родителями."
             ),
             "teen": (
-                f" Пользователю {age} лет — ПОДРОСТОК. "
-                "Говори простым, современным языком — как старший друг. "
-                "Не читай нотаций, не обесценивай проблемы. "
-                "У подростков сильные эмоции — будь бережен."
+                f" Пользователю {age} лет — подросток. "
+                "Говори простым, современным языком, как старший друг. "
+                "Без нравоучений. Не обесценивай проблемы."
             ),
             "young": (
                 f" Пользователю {age} лет — 18-25. "
-                "На равных, современно, с теплотой. Можно лёгкие метафоры и юмор. "
-                "Темы: учёба, работа, отношения, поиск себя."
+                "На равных, современно, тепло."
             ),
             "adult": (
                 f" Пользователю {age} лет — взрослый. "
-                "Уважительно, по-взрослому. Можно сложные темы: работа, семья, выгорание, родительство."
+                "Уважительно, по-взрослому."
             ),
             "middle": (
                 f" Пользователю {age} лет. "
-                "Уважительно, тепло. Признавай жизненный опыт. "
-                "Темы: дети выросли, здоровье, смысл, потери."
+                "Уважительно, тепло. Признавай жизненный опыт."
             ),
             "older": (
                 f" Пользователю {age} лет — старший возраст. "
-                "Уважительно, тепло, без сюсюканья. Признавай опыт. "
-                "Говори чуть медленнее. Темы: здоровье, одиночество, внуки, воспоминания."
+                "Уважительно, тепло, чуть медленнее."
             ),
         }
         age_add = age_additions.get(group, "")
     style_additions = {
         "soft": " Общайся мягко и бережно.",
         "direct": " Общайся прямо и по делу.",
-        "humor": " Можно легко и с юмором.",
+        "humor": " Можно легко, с лёгким юмором.",
     }
     return base + age_add + style_additions.get(style, "")
 
 def kb_style():
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🤍 Мягко", callback_data="style_soft"),
-         InlineKeyboardButton(text="💬 Прямо", callback_data="style_direct")],
-        [InlineKeyboardButton(text="✨ С юмором", callback_data="style_humor")],
-    ])
-
-def kb_main():
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="😰 Тревожно", callback_data="q_тревожно"),
-         InlineKeyboardButton(text="😢 Грустно", callback_data="q_грустно")],
-        [InlineKeyboardButton(text="😠 Злюсь", callback_data="q_злюсь"),
-         InlineKeyboardButton(text="😴 Не уснуть", callback_data="q_сон")],
-        [InlineKeyboardButton(text="💔 Отношения", callback_data="q_отношения"),
-         InlineKeyboardButton(text="🆘 Помощь", callback_data="q_кризис")],
+        [InlineKeyboardButton(text="Мягко", callback_data="style_soft"),
+         InlineKeyboardButton(text="Прямо", callback_data="style_direct")],
+        [InlineKeyboardButton(text="С юмором", callback_data="style_humor")],
     ])
 
 EX = {
-    "breath": "🌬 Дыхание 4-4-4\n\nВдох 4 сек → задержка 4 → выдох 4. Повтори 5 раз. Как ты?",
-    "ground": "🌳 Заземление 5-4-3-2-1\n\n5 видишь, 4 слышишь, 3 коснёшься, 2 запаха, 1 вкус. Как ощущения?",
-    "body": "🧘 Сканирование тела\n\nПереводи внимание: стопы → ноги → живот → грудь → руки → шея → лицо. Где напряжение — дыши туда.",
-    "relax": "💪 Релаксация\n\nНапряги и расслабь: кулаки, плечи, лицо, живот, ноги. Повтори 2-3 раза.",
+    "breath": "Дыхание 4-4-4\n\nВдох 4 сек, задержка 4, выдох 4. Повтори 5 раз. Как ты?",
+    "ground": "Заземление 5-4-3-2-1\n\n5 видишь, 4 слышишь, 3 коснёшься, 2 запаха, 1 вкус. Как ощущения?",
+    "body": "Сканирование тела\n\nПереводи внимание: стопы, ноги, живот, грудь, руки, шея, лицо. Где напряжение — дыши туда.",
+    "relax": "Релаксация\n\nНапряги и расслабь: кулаки, плечи, лицо, живот, ноги. Повтори 2-3 раза.",
 }
 
 @dp.message(Command("start"))
@@ -177,23 +213,24 @@ async def start(m: types.Message):
     HISTORY[m.chat.id].clear()
     ONBOARDED.discard(m.chat.id)
     PROFILES.pop(m.chat.id, None)
-    await m.answer("Привет! Я Бот поддержки 💙\n\nЯ здесь, чтобы выслушать. Как тебя зовут?")
+    await m.answer(random.choice(GREETINGS))
 
 @dp.message(Command("help"))
 async def help_cmd(m: types.Message):
     await m.answer(
-        "💡 Что я умею:\n\n"
-        "🆘 Если очень плохо — напиши мне, дам телефон доверия.\n\n"
-        "🌬 Упражнения:\n"
-        "/успокоиться — дыхание 4-4-4\n"
+        "Что я умею:\n\n"
+        "Если очень плохо — напиши мне, дам телефон доверия.\n\n"
+        "Упражнения:\n"
+        "/успокоиться — дыхание\n"
         "/заземлиться — техника 5-4-3-2-1\n"
         "/тело — сканирование тела\n"
         "/релакс — прогрессивная релаксация\n\n"
-        "🎤 Голосовые — просто отправь.\n\n"
-        "👤 /profile — что я о тебе знаю\n"
-        "🧹 /reset — начать заново\n\n"
-        "📞 Телефон доверия: 8-800-2000-122\n"
-        "⚠️ Я не заменяю живого специалиста."
+        "Можно отправлять голосовые.\n\n"
+        "/profile — что я о тебе знаю\n"
+        "/reset — начать заново\n"
+        "/stop — попрощаться\n\n"
+        "Телефон доверия: 8-800-2000-122\n"
+        "Я не заменяю живого специалиста."
     )
 
 @dp.message(Command("profile"))
@@ -208,7 +245,7 @@ async def profile(m: types.Message):
                    "adult": "взрослый", "middle": "средний", "older": "старший"}
     group = f" ({group_names.get(get_age_group(age), '')})" if age != "—" else ""
     await m.answer(
-        f"👤 Имя: {p.get('name', '—')}\n"
+        f"Имя: {p.get('name', '—')}\n"
         f"Возраст: {age}{group}\n"
         f"Стиль: {styles.get(p.get('style', 'soft'), '—')}"
     )
@@ -216,7 +253,15 @@ async def profile(m: types.Message):
 @dp.message(Command("reset"))
 async def reset(m: types.Message):
     HISTORY[m.chat.id].clear()
-    await m.answer("Начнём заново. О чём поговорим?", reply_markup=kb_main())
+    await m.answer(random.choice([
+        "Начнём заново. О чём поговорим?",
+        "Хорошо, с чистого листа. Что тебя беспокоит?",
+        "Начнём сначала. Расскажи, что на душе.",
+    ]))
+
+@dp.message(Command("stop"))
+async def stop_cmd(m: types.Message):
+    await m.answer(random.choice(FAREWELLS))
 
 @dp.message(Command("успокоиться"))
 async def ex1(m: types.Message): await m.answer(EX["breath"])
@@ -239,23 +284,7 @@ async def cb(c: CallbackQuery):
     if d.startswith("style_"):
         PROFILES.setdefault(cid, {})["style"] = d.replace("style_", "")
         ONBOARDED.add(cid)
-        await c.message.answer(
-            "Спасибо! Я всё запомнил 🌿\n\n"
-            "💡 Что я умею:\n"
-            "• 🌬 /успокоиться — дыхание при тревоге\n"
-            "• 🌳 /заземлиться — техника 5-4-3-2-1\n"
-            "• 🧘 /тело — сканирование тела\n"
-            "• 💪 /релакс — прогрессивная релаксация\n"
-            "• 🎤 Можно отправлять голосовые\n"
-            "• 👤 /profile — что я о тебе знаю\n\n"
-            "⚠️ Я — ИИ, не живой психолог. Если плохо — 8-800-2000-122.\n\n"
-            "Как ты сейчас?",
-            reply_markup=kb_main()
-        )
-        return
-
-    if d == "q_кризис":
-        await c.message.answer(CRISIS_REPLY)
+        await c.message.answer(random.choice(AFTER_ONBOARD))
         return
 
     prompts = {
@@ -275,12 +304,12 @@ async def process(m: types.Message, text: str):
     p = PROFILES.get(cid, {})
     sysmsg = sys_prompt(p.get("age"), p.get("style", "soft"))
     if p.get("name"):
-        sysmsg += f" Имя: {p['name']}."
+        sysmsg += f" Имя пользователя: {p['name']}. Это его имя, не твоё. Ты — ИИ-помощник без имени."
     msgs = [{"role": "system", "content": sysmsg}] + HISTORY[cid]
 
     for model in MODELS:
         try:
-            r = client.chat.completions.create(model=model, messages=msgs, max_tokens=700)
+            r = client.chat.completions.create(model=model, messages=msgs, max_tokens=500)
             ans = r.choices[0].message.content
             add_hist(cid, "assistant", ans)
             await m.answer(ans)
@@ -289,7 +318,7 @@ async def process(m: types.Message, text: str):
         except Exception as e:
             print(f"[AI] {model}: {type(e).__name__}: {e}")
 
-    await m.answer("Извини, задумался. Попробуй через минуту.\n\nЕсли плохо — 8-800-2000-122")
+    await m.answer(random.choice(ERROR_REPLIES))
 
 async def voice_txt(path: str) -> str:
     with open(path, "rb") as f:
@@ -314,7 +343,7 @@ async def voice(m: types.Message):
         if not t:
             await m.answer("Не разобрал. Напиши текстом.")
             return
-        await m.answer(f"🎤 Я услышал: _{t}_")
+        await m.answer(f"Я услышал: {t}")
         await process(m, t)
     except Exception as e:
         print(f"[VOICE] {e}")
@@ -330,27 +359,27 @@ async def chat(m: types.Message):
     if cid not in ONBOARDED and len(HISTORY[cid]) == 0:
         name = m.text.strip()[:50]
         p["name"] = name
-        HISTORY[cid].append({"role": "system", "content": f"Имя: {name}"})
+        HISTORY[cid].append({"role": "system", "content": f"Имя пользователя: {name}. Это его имя, не твоё. Ты — ИИ-помощник без имени."})
         ONBOARDED.add(cid)
-        await m.answer(f"Приятно познакомиться, {name}! 🌿\n\nСколько тебе лет? Напиши цифрой (например: 17 или 42).")
+        await m.answer(f"Приятно познакомиться, {name}. Сколько тебе лет? Напиши цифрой.")
         return
 
     if "age" not in p:
         age = parse_age(m.text)
         if age is None:
-            await m.answer("Не понял возраст 🤔 Напиши просто цифрой: 15, 25, 40, 65.")
+            await m.answer("Не понял. Напиши просто цифрой: 15, 25, 40, 65.")
             return
         p["age"] = age
         group = get_age_group(age)
         replies = {
-            "child": "Понял! Буду говорить с тобой просто и понятно 🌟",
-            "teen": "Понял! Буду общаться по-дружески 🌿",
-            "young": "Понял! Будем на равных 💬",
-            "adult": "Понял, спасибо 🌿",
-            "middle": "Понял, спасибо 🌿",
-            "older": "Понял. Буду говорить уважительно, не спеша 🌿",
+            "child": "Понял. Буду говорить просто.",
+            "teen": "Понял. Буду общаться по-дружески.",
+            "young": "Понял.",
+            "adult": "Понял.",
+            "middle": "Понял.",
+            "older": "Понял. Буду говорить уважительно, не спеша.",
         }
-        await m.answer(f"{replies.get(group, 'Спасибо!')}\n\nКак предпочитаешь общаться?", reply_markup=kb_style())
+        await m.answer(f"{replies.get(group, 'Спасибо.')}\n\nКак предпочитаешь общаться?", reply_markup=kb_style())
         return
 
     print(f"[MSG] {m.text[:50]}")
@@ -367,11 +396,11 @@ async def main():
     await runner.setup()
     await web.TCPSite(runner, "0.0.0.0", port).start()
     print(f"=== WEB SERVER ON PORT {port} ===")
-    
+
     global MODELS
     MODELS = load_models()
     print(f"=== ЗАГРУЖЕНО {len(MODELS)} МОДЕЛЕЙ ===")
-    
+
     print("=== ЖДУ 15 СЕКУНД ===")
     await asyncio.sleep(15)
     try:

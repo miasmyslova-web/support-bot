@@ -38,7 +38,7 @@ async def chat_handler(message: types.Message):
     try:
         print(f"[AI] отправляю запрос в OpenRouter...")
         response = client.chat.completions.create(
-            model="deepseek/deepseek-chat-v3.1:free",
+            model="google/gemma-4-31b-it:free",
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": message.text}

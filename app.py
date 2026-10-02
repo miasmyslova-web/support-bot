@@ -30,7 +30,8 @@ async def chat_handler(message: types.Message):
     await bot.send_chat_action(message.chat.id, "typing")
     try:
         response = client.chat.completions.create(
-            model=model="deepseek/deepseek-chat-v3.1:free",
+            model="deepseek/deepseek-chat-v3.1:free",
+            messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": message.text}
             ],

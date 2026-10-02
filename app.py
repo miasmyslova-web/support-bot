@@ -1,4 +1,4 @@
-import os, asyncio, random, json, tempfile
+import os, asyncio, random, tempfile
 from datetime import datetime, timedelta
 from collections import defaultdict
 from aiogram import Bot, Dispatcher, types
@@ -17,16 +17,22 @@ bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
 HISTORY = defaultdict(list)
-MOOD_LOG = defaultdict(list)
-REMINDERS = []
 PROFILES = {}
 ONBOARDED = set()
 
+# ===== РАСШИРЕННЫЙ СПИСОК БЕСПЛАТНЫХ МОДЕЛЕЙ =====
 MODELS = [
     "nvidia/nemotron-3-super:free",
+    "nvidia/nemotron-3-nano-omni:free",
+    "dots-studio/dots-3-note-preview:free",
     "qwen/qwen-3-8-27b:free",
     "google/gemma-4-31b-it:free",
+    "google/gemma-4-26b-a4b-it:free",
     "meta-llama/llama-3.3-70b-instruct:free",
+    "meta-llama/llama-3.1-8b-instruct:free",
+    "mistralai/mistral-7b-instruct:free",
+    "microsoft/phi-3-medium-128k-instruct:free",
+    "huggingfaceh4/zephyr-7b-beta:free",
 ]
 VOICE_MODEL = "google/gemini-2.0-flash-exp:free"
 
@@ -56,71 +62,98 @@ def add_hist(cid, role, content):
     if len(HISTORY[cid]) > 20:
         HISTORY[cid] = HISTORY[cid][-20:]
 
+# ===== ПРОМПТ ПО ВОЗРАСТУ (6 КАТЕГОРИЙ) =====
 def sys_prompt(age="unknown", style="soft"):
-    base = "Ты — эмпатичный ассистент-психолог. Не ставь диагнозы. Отвечай тепло, по-человечески, кратко. Помни контекст."
-    extra = {
-        "teen": " Пользователь — подросток. Говори как старший друг, без нравоучений.",
-        "young": " Пользователь — 18-25 лет. На равных, современно.",
-        "adult": " Пользователь — взрослый. Уважительно, по-взрослому.",
-        "older": " Пользователь — старшего возраста. Тепло, с уважением к опыту.",
-    }.get(age, "")
-    style_extra = {
-        "soft": " Мягко и бережно.",
-        "direct": " Прямо и по делу.",
-        "humor": " Легко, с юмором.",
-    }.get(style, "")
-    return base + extra + style_extra
+    base = "Ты — эмпатичный ассистент-психолог. Не ставь диагнозы. Отвечай тепло, по-человечески. Помни контекст разговора."
+    
+    age_additions = {
+        "child": (
+            " Пользователь — РЕБЁНОК (младше 13 лет). "
+            "Говори ОЧЕНЬ простыми словами, короткими фразами. "
+            "Не используй сложные термины и метафоры. "
+            "Будь как добрый друг или старший sibling. "
+            "Обязательно спрашивай про родителей — если что-то серьёзное, советуй поговорить со взрослым, которому доверяет. "
+            "Используй эмодзи, чтобы было понятнее и теплее."
+        ),
+        "teen": (
+            " Пользователь — ПОДРОСТОК (13–17 лет). "
+            "Говори простым, современным языком — как старший друг. "
+            "Не используй сложные психологические термины. "
+            "Не читай нотаций, не говори «в твоём возрасте», не обесценивай проблемы («это ерунда»). "
+            "У подростков сильные эмоции — будь особенно бережен. "
+            "Если что-то серьёзное — мягко предложи поговорить со взрослым, которому доверяет, или позвонить на телефон доверия."
+        ),
+        "young": (
+            " Пользователь — 18–25 лет. "
+            "Говори на равных, современно, но с теплотой. "
+            "Можно лёгкие метафоры и юмор. "
+            "Понимай проблемы: учёба, работа, отношения, поиск себя. "
+            "Будь прямым, но мягким."
+        ),
+        "adult": (
+            " Пользователь — взрослый (26–45 лет). "
+            "Говори уважительно, по-взрослому. "
+            "Можно обсуждать сложные темы: работу, семью, смысл, выгорание, родительство. "
+            "Не упрощай. Не сюсюкай. "
+            "Признавай, что у взрослых тоже бывает тяжело, и это нормально."
+        ),
+        "middle": (
+            " Пользователь — 46–60 лет. "
+            "Говори уважительно, тепло, по-взрослому. "
+            "Признавай жизненный опыт. "
+            "Понимай темы: дети выросли, работа, здоровье, смысл, потери. "
+            "Будь особенно терпелив."
+        ),
+        "older": (
+            " Пользователь — старшего возраста (60+). "
+            "Говори уважительно, тепло, без сюсюканья. "
+            "Признавай большой жизненный опыт. "
+            "Говори чуть медленнее, простыми фразами. "
+            "Понимай темы: здоровье, одиночество, потери, воспоминания, дети и внуки. "
+            "Будь особенно терпелив и внимателен."
+        ),
+        "unknown": "",
+    }
+    
+    style_additions = {
+        "soft": " Общайся мягко и бережно, много поддержки.",
+        "direct": " Общайся прямо и по делу, задавай конкретные вопросы.",
+        "humor": " Можно легко и с юмором, но не переигрывай — юмор не вместо эмпатии.",
+    }
+    
+    return base + age_additions.get(age, "") + style_additions.get(style, "")
+
+# ===== КНОПКИ =====
 
 def kb_age():
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="13–17", callback_data="age_teen")],
-        [InlineKeyboardButton(text="18–25", callback_data="age_young")],
-        [InlineKeyboardButton(text="26–45", callback_data="age_adult")],
-        [InlineKeyboardButton(text="46+", callback_data="age_older")],
-        [InlineKeyboardButton(text="Пропустить", callback_data="age_skip")],
+        [InlineKeyboardButton(text="🧒 До 13 лет", callback_data="age_child")],
+        [InlineKeyboardButton(text="🧑 13–17 лет", callback_data="age_teen")],
+        [InlineKeyboardButton(text="🧑‍🎓 18–25 лет", callback_data="age_young")],
+        [InlineKeyboardButton(text="🧑‍💼 26–45 лет", callback_data="age_adult")],
+        [InlineKeyboardButton(text="🧓 46–60 лет", callback_data="age_middle")],
+        [InlineKeyboardButton(text="👴 60+ лет", callback_data="age_older")],
+        [InlineKeyboardButton(text="🤐 Пропустить", callback_data="age_skip")],
     ])
 
 def kb_style():
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🤍 Мягко", callback_data="style_soft")],
-        [InlineKeyboardButton(text="💬 Прямо", callback_data="style_direct")],
+        [InlineKeyboardButton(text="🤍 Мягко", callback_data="style_soft"),
+         InlineKeyboardButton(text="💬 Прямо", callback_data="style_direct")],
         [InlineKeyboardButton(text="✨ С юмором", callback_data="style_humor")],
-    ])
-
-def kb_topics():
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="😰 Тревога", callback_data="topic_тревога")],
-        [InlineKeyboardButton(text="😢 Грусть", callback_data="topic_грусть")],
-        [InlineKeyboardButton(text="💔 Отношения", callback_data="topic_отношения")],
-        [InlineKeyboardButton(text="😴 Сон", callback_data="topic_сон")],
-        [InlineKeyboardButton(text="🌱 Поддержка", callback_data="topic_поддержка")],
-        [InlineKeyboardButton(text="➡️ Пропустить", callback_data="topic_skip")],
-    ])
-
-def kb_morning():
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🌅 9:00", callback_data="morning_9")],
-        [InlineKeyboardButton(text="☀️ 8:00", callback_data="morning_8")],
-        [InlineKeyboardButton(text="🌙 10:00", callback_data="morning_10")],
-        [InlineKeyboardButton(text="🚫 Нет", callback_data="morning_no")],
     ])
 
 def kb_main():
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="😰 Тревожно", callback_data="quick_тревожно")],
-        [InlineKeyboardButton(text="😢 Грустно", callback_data="quick_грустно")],
-        [InlineKeyboardButton(text="😠 Злюсь", callback_data="quick_злюсь")],
-        [InlineKeyboardButton(text="😴 Не уснуть", callback_data="quick_сон")],
-        [InlineKeyboardButton(text="💔 Отношения", callback_data="quick_отношения")],
-        [InlineKeyboardButton(text="🆘 Помощь", callback_data="quick_кризис")],
+        [InlineKeyboardButton(text="😰 Тревожно", callback_data="q_тревожно"),
+         InlineKeyboardButton(text="😢 Грустно", callback_data="q_грустно")],
+        [InlineKeyboardButton(text="😠 Злюсь", callback_data="q_злюсь"),
+         InlineKeyboardButton(text="😴 Не уснуть", callback_data="q_сон")],
+        [InlineKeyboardButton(text="💔 Отношения", callback_data="q_отношения"),
+         InlineKeyboardButton(text="🆘 Помощь", callback_data="q_кризис")],
     ])
 
-def kb_mood():
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=str(i), callback_data=f"mood_{i}") for i in range(1, 6)],
-        [InlineKeyboardButton(text=str(i), callback_data=f"mood_{i}") for i in range(6, 11)],
-    ])
-
+# ===== УПРАЖНЕНИЯ =====
 EX = {
     "breath": "🌬 Дыхание 4-4-4\n\nВдох 4 сек → задержка 4 → выдох 4. Повтори 5 раз. Как ты?",
     "ground": "🌳 Заземление 5-4-3-2-1\n\n5 видишь, 4 слышишь, 3 коснёшься, 2 запаха, 1 вкус. Как ощущения?",
@@ -128,21 +161,22 @@ EX = {
     "relax": "💪 Релаксация\n\nНапряги и расслабь: кулаки, плечи, лицо, живот, ноги. Повтори 2-3 раза.",
 }
 
+# ===== КОМАНДЫ =====
+
 @dp.message(Command("start"))
 async def start(m: types.Message):
     HISTORY[m.chat.id].clear()
     ONBOARDED.discard(m.chat.id)
     PROFILES.pop(m.chat.id, None)
-    await m.answer("Привет! Меня зовут Бот поддержки 💙\n\nЯ здесь, чтобы выслушать. Как тебя зовут?")
+    await m.answer("Привет! Я Бот поддержки 💙\n\nЯ здесь, чтобы выслушать. Как тебя зовут?")
 
 @dp.message(Command("help"))
 async def help_cmd(m: types.Message):
     await m.answer(
         "Что умею:\n"
-        "🎤 Голосовые\n🌅 /утро — утренние сообщения\n"
+        "🎤 Голосовые\n"
         "🌬 /успокоиться\n🌳 /заземлиться\n🧘 /тело\n💪 /релакс\n"
-        "📊 /настроение\n📈 /статистика\n👤 /profile\n"
-        "⏰ /напомни ЧЧ:ММ текст\n🧹 /reset\n\n"
+        "👤 /profile\n🧹 /reset\n\n"
         "📞 Телефон доверия: 8-800-2000-122"
     )
 
@@ -152,18 +186,16 @@ async def profile(m: types.Message):
     if not p:
         await m.answer("Пока ничего не знаю. /start")
         return
-    ages = {"teen": "13-17", "young": "18-25", "adult": "26-45", "older": "46+", "unknown": "—"}
+    ages = {
+        "child": "до 13", "teen": "13–17", "young": "18–25",
+        "adult": "26–45", "middle": "46–60", "older": "60+", "unknown": "—"
+    }
     styles = {"soft": "мягко", "direct": "прямо", "humor": "с юмором"}
     await m.answer(
         f"👤 Имя: {p.get('name', '—')}\n"
         f"Возраст: {ages.get(p.get('age_group', 'unknown'), '—')}\n"
-        f"Стиль: {styles.get(p.get('style', 'soft'), '—')}\n"
-        f"Тема: {p.get('topic', '—')}"
+        f"Стиль: {styles.get(p.get('style', 'soft'), '—')}"
     )
-
-@dp.message(Command("утро"))
-async def morning(m: types.Message):
-    await m.answer("🌅 Хочешь тёплое сообщение по утрам?", reply_markup=kb_morning())
 
 @dp.message(Command("reset"))
 async def reset(m: types.Message):
@@ -182,37 +214,7 @@ async def ex3(m: types.Message): await m.answer(EX["body"])
 @dp.message(Command("релакс"))
 async def ex4(m: types.Message): await m.answer(EX["relax"])
 
-@dp.message(Command("настроение"))
-async def mood(m: types.Message):
-    await m.answer("Оцени настроение от 1 до 10:", reply_markup=kb_mood())
-
-@dp.message(Command("статистика"))
-async def stats(m: types.Message):
-    log = MOOD_LOG.get(m.chat.id, [])
-    if not log:
-        await m.answer("Пока нет отметок. /настроение")
-        return
-    last = log[-10:]
-    avg = sum(s for _, s in last) / len(last)
-    text = "\n".join(f"{d}: {'⭐' * s} ({s}/10)" for d, s in last)
-    await m.answer(f"📈 Настроение:\n\n{text}\n\nСреднее: {avg:.1f}/10")
-
-@dp.message(Command("напомни"))
-async def remind(m: types.Message):
-    parts = m.text.split(maxsplit=2)
-    if len(parts) < 3:
-        await m.answer("Формат: /напомни 20:30 выпить воды")
-        return
-    try:
-        h, mi = map(int, parts[1].split(":"))
-        now = datetime.now()
-        target = now.replace(hour=h, minute=mi, second=0, microsecond=0)
-        if target <= now:
-            target += timedelta(days=1)
-        REMINDERS.append((m.chat.id, target.timestamp(), parts[2]))
-        await m.answer(f"⏰ Напомню в {parts[1]}")
-    except Exception:
-        await m.answer("Формат: ЧЧ:ММ")
+# ===== CALLBACK =====
 
 @dp.callback_query()
 async def cb(c: CallbackQuery):
@@ -222,7 +224,8 @@ async def cb(c: CallbackQuery):
 
     if d.startswith("age_"):
         age = d.replace("age_", "")
-        PROFILES.setdefault(cid, {})["age_group"] = age
+        if age != "skip":
+            PROFILES.setdefault(cid, {})["age_group"] = age
         await c.message.answer("Отлично. Как предпочитаешь общаться?", reply_markup=kb_style())
         return
 
@@ -230,50 +233,28 @@ async def cb(c: CallbackQuery):
         st = d.replace("style_", "")
         PROFILES.setdefault(cid, {})["style"] = st
         ONBOARDED.add(cid)
-        await c.message.answer("Что чаще беспокоит?", reply_markup=kb_topics())
+        await c.message.answer(
+            "Спасибо! Я всё запомнил.\n\n"
+            "⚠️ Я — ИИ, не живой психолог. Если плохо — 8-800-2000-122.\n\n"
+            "Как ты сейчас?",
+            reply_markup=kb_main()
+        )
         return
 
-    if d.startswith("topic_"):
-        t = d.replace("topic_", "")
-        if t != "skip":
-            PROFILES.setdefault(cid, {})["topic"] = t
-        await c.message.answer("Спасибо! Я всё запомнил.\n\n⚠️ Я — ИИ, не живой психолог. Если плохо — 8-800-2000-122.\n\nКак ты сейчас?", reply_markup=kb_main())
-        await c.message.answer("Хочешь тёплое сообщение по утрам?", reply_markup=kb_morning())
-        return
-
-    if d.startswith("morning_"):
-        if d == "morning_no":
-            await c.message.answer("Хорошо 🌙")
-            return
-        t = d.replace("morning_", "") + ":00"
-        PROFILES.setdefault(cid, {})["morning"] = t
-        await c.message.answer(f"🌅 Буду писать в {t}.")
-        return
-
-    if d.startswith("mood_"):
-        s = int(d.replace("mood_", ""))
-        MOOD_LOG[cid].append((datetime.now().strftime("%d.%m"), s))
-        await c.message.answer(f"Записал: {s}/10 💙")
-        return
-
-    if d == "quick_кризис":
+    if d == "q_кризис":
         await c.message.answer(CRISIS_REPLY)
         return
 
-    if d.startswith("ex_"):
-        k = d.replace("ex_", "")
-        if k in EX:
-            await c.message.answer(EX[k])
-        return
-
     prompts = {
-        "quick_тревожно": "Мне тревожно.",
-        "quick_грустно": "Мне грустно.",
-        "quick_злюсь": "Я злюсь.",
-        "quick_сон": "Не могу уснуть.",
-        "quick_отношения": "Проблемы в отношениях.",
+        "q_тревожно": "Мне тревожно.",
+        "q_грустно": "Мне грустно.",
+        "q_злюсь": "Я злюсь.",
+        "q_сон": "Не могу уснуть.",
+        "q_отношения": "Проблемы в отношениях.",
     }
     await process(c.message, prompts.get(d, "Мне нужна поддержка."))
+
+# ===== ОСНОВНАЯ ЛОГИКА =====
 
 async def process(m: types.Message, text: str):
     cid = m.chat.id
@@ -287,16 +268,25 @@ async def process(m: types.Message, text: str):
     if p.get("name"):
         sysmsg += f" Имя: {p['name']}."
     msgs = [{"role": "system", "content": sysmsg}] + HISTORY[cid]
+
+    random.shuffle(MODELS)
     for model in MODELS:
         try:
             r = client.chat.completions.create(model=model, messages=msgs, max_tokens=600)
             ans = r.choices[0].message.content
             add_hist(cid, "assistant", ans)
             await m.answer(ans)
+            print(f"[OK] {model}")
             return
         except Exception as e:
             print(f"[AI] {model}: {type(e).__name__}")
-    await m.answer("Извини, задумался. Напиши ещё раз.\n\nЕсли плохо — 8-800-2000-122")
+
+    await m.answer(
+        "Извини, все модели сейчас перегружены. Попробуй через минуту.\n\n"
+        "Если плохо — 8-800-2000-122"
+    )
+
+# ===== ГОЛОСОВЫЕ =====
 
 async def voice_txt(path: str) -> str:
     import base64
@@ -347,31 +337,7 @@ async def chat(m: types.Message):
         return
     await process(m, m.text)
 
-async def sched():
-    last = ""
-    while True:
-        now = datetime.now()
-        cur = now.strftime("%H:%M")
-        key = now.strftime("%d.%m.%Y") + "_" + cur
-        if key != last:
-            for cid, p in list(PROFILES.items()):
-                if p.get("morning") == cur:
-                    try:
-                        await bot.send_message(cid, random.choice([
-                            "Доброе утро 🌅 Как ты?",
-                            "Утро 💙 Я рядом.",
-                            "Привет 🌿 Как спалось?",
-                        ]))
-                    except Exception as e:
-                        print(f"[MORN] {e}")
-            last = key
-        ts = now.timestamp()
-        for cid, t, txt in [r for r in REMINDERS if r[1] <= ts]:
-            try:
-                await bot.send_message(cid, f"⏰ {txt}")
-            except: pass
-        REMINDERS[:] = [r for r in REMINDERS if r[1] > ts]
-        await asyncio.sleep(30)
+# ===== ВЕБ-СЕРВЕР =====
 
 async def handle(req):
     return web.Response(text="Bot is running!")
@@ -384,8 +350,6 @@ async def main():
     await runner.setup()
     await web.TCPSite(runner, "0.0.0.0", port).start()
     print(f"=== WEB SERVER ON PORT {port} ===")
-    asyncio.create_task(sched())
-    print("=== SCHEDULER STARTED ===")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":

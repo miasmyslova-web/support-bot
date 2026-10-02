@@ -1,4 +1,4 @@
-import os, asyncio, random, tempfile
+import os, asyncio, random, tempfile, re
 from datetime import datetime, timedelta
 from collections import defaultdict
 from aiogram import Bot, Dispatcher, types
@@ -61,71 +61,111 @@ def add_hist(cid, role, content):
     if len(HISTORY[cid]) > 20:
         HISTORY[cid] = HISTORY[cid][-20:]
 
-def sys_prompt(age="unknown", style="soft"):
+# ===== ПАРСИНГ ВОЗРАСТА =====
+def parse_age(text: str):
+    """Пытается извлечь возраст из текста."""
+    text = text.strip().lower()
+    
+    # Ищем число
+    numbers = re.findall(r'\d+', text)
+    if not numbers:
+        # Может, написали словом?
+        words = {
+            "шесть": 6, "семь": 7, "восемь": 8, "девять": 9, "десять": 10,
+            "одиннадцать": 11, "двенадцать": 12, "тринадцать": 13, "четырнадцать": 14,
+            "пятнадцать": 15, "шестнадцать": 16, "семнадцать": 17, "восемнадцать": 18,
+            "девятнадцать": 19, "двадцать": 20, "тридцать": 30, "сорок": 40,
+            "пятьдесят": 50, "шестьдесят": 60, "семьдесят": 70,
+        }
+        for w, n in words.items():
+            if w in text:
+                return n
+        return None
+    
+    age = int(numbers[0])
+    if 1 <= age <= 120:
+        return age
+    return None
+
+# ===== ОПРЕДЕЛЕНИЕ ВОЗРАСТНОЙ ГРУППЫ =====
+def get_age_group(age: int) -> str:
+    if age < 13:
+        return "child"
+    elif age < 18:
+        return "teen"
+    elif age < 26:
+        return "young"
+    elif age < 46:
+        return "adult"
+    elif age < 61:
+        return "middle"
+    else:
+        return "older"
+
+# ===== ПРОМПТ ПО ВОЗРАСТУ =====
+def sys_prompt(age=None, style="soft"):
     base = "Ты — эмпатичный ассистент-психолог. Не ставь диагнозы. Отвечай тепло, по-человечески. Помни контекст разговора."
-    age_additions = {
-        "child": (
-            " Пользователь — РЕБЁНОК (младше 13 лет). "
-            "Говори ОЧЕНЬ простыми словами, короткими фразами. "
-            "Не используй сложные термины и метафоры. "
-            "Будь как добрый друг или старший брат/сестра. "
-            "Обязательно спрашивай про родителей — если что-то серьёзное, советуй поговорить со взрослым, которому доверяет. "
-            "Используй эмодзи, чтобы было понятнее и теплее."
-        ),
-        "teen": (
-            " Пользователь — ПОДРОСТОК (13–17 лет). "
-            "Говори простым, современным языком — как старший друг. "
-            "Не используй сложные психологические термины. "
-            "Не читай нотаций, не говори «в твоём возрасте», не обесценивай проблемы. "
-            "У подростков сильные эмоции — будь особенно бережен. "
-            "Если что-то серьёзное — мягко предложи поговорить со взрослым или позвонить на телефон доверия."
-        ),
-        "young": (
-            " Пользователь — 18–25 лет. "
-            "Говори на равных, современно, но с теплотой. "
-            "Можно лёгкие метафоры и юмор. "
-            "Понимай проблемы: учёба, работа, отношения, поиск себя."
-        ),
-        "adult": (
-            " Пользователь — взрослый (26–45 лет). "
-            "Говори уважительно, по-взрослому. "
-            "Можно обсуждать сложные темы: работу, семью, смысл, выгорание, родительство. "
-            "Не упрощай. Не сюсюкай."
-        ),
-        "middle": (
-            " Пользователь — 46–60 лет. "
-            "Говори уважительно, тепло, по-взрослому. "
-            "Признавай жизненный опыт. "
-            "Понимай темы: дети выросли, работа, здоровье, смысл, потери. "
-            "Будь особенно терпелив."
-        ),
-        "older": (
-            " Пользователь — старшего возраста (60+). "
-            "Говори уважительно, тепло, без сюсюканья. "
-            "Признавай большой жизненный опыт. "
-            "Говори чуть медленнее, простыми фразами. "
-            "Понимай темы: здоровье, одиночество, потери, воспоминания, внуки. "
-            "Будь особенно терпелив и внимателен."
-        ),
-        "unknown": "",
-    }
+    
+    if age is None:
+        age_add = ""
+    else:
+        group = get_age_group(age)
+        
+        age_additions = {
+            "child": (
+                f" Пользователю {age} лет — это РЕБЁНОК. "
+                "Говори ОЧЕНЬ простыми словами, короткими фразами, будто объясняешь младшему. "
+                "Никаких сложных терминов, метафор, абстракций. "
+                "Будь как добрый старший друг или старший брат/сестра. "
+                "Используй много эмодзи, чтобы было тепло и понятно. "
+                "Обязательно спрашивай про родителей — если что-то серьёзное, советуй поговорить со взрослым, которому ребёнок доверяет."
+            ),
+            "teen": (
+                f" Пользователю {age} лет — это ПОДРОСТОК. "
+                "Говори простым, современным языком — как старший друг, не как учитель. "
+                "Никаких сложных психологических терминов. "
+                "Не читай нотаций, не говори «в твоём возрасте», не обесценивай проблемы. "
+                "У подростков сильные эмоции, гормоны, всё воспринимается острее — будь особенно бережен. "
+                "Если что-то серьёзное — мягко предложи поговорить со взрослым, которому доверяет, или позвонить на телефон доверия."
+            ),
+            "young": (
+                f" Пользователю {age} лет — это молодой человек. "
+                "Говори на равных, современно, но с теплотой. "
+                "Можно лёгкие метафоры и юмор, но не переигрывай. "
+                "Понимай проблемы: учёба, работа, отношения, поиск себя, переезды, самооценка, тревога о будущем."
+            ),
+            "adult": (
+                f" Пользователю {age} лет — это взрослый человек. "
+                "Говори уважительно, по-взрослому, на равных. "
+                "Можно обсуждать сложные темы: работу, семью, смысл, выгорание, родительство, отношения, потери. "
+                "Не упрощай. Не сюсюкай. Не давай банальных советов."
+            ),
+            "middle": (
+                f" Пользователю {age} лет. "
+                "Говори уважительно, тепло, по-взрослому. "
+                "Признавай жизненный опыт. "
+                "Понимай темы: дети выросли, работа, здоровье, смысл, потери, отношения, изменения в теле. "
+                "Будь особенно терпелив."
+            ),
+            "older": (
+                f" Пользователю {age} лет — это человек старшего возраста. "
+                "Говори уважительно, тепло, без сюсюканья и снисходительности. "
+                "Признавай большой жизненный опыт. "
+                "Говори чуть медленнее, простыми, но не примитивными фразами. "
+                "Понимай темы: здоровье, одиночество, потери, воспоминания, дети и внуки, страх. "
+                "Будь особенно терпелив и внимателен, не торопи."
+            ),
+        }
+        age_add = age_additions.get(group, "")
+    
     style_additions = {
         "soft": " Общайся мягко и бережно, много поддержки.",
         "direct": " Общайся прямо и по делу, задавай конкретные вопросы.",
         "humor": " Можно легко и с юмором, но не переигрывай.",
     }
-    return base + age_additions.get(age, "") + style_additions.get(style, "")
+    return base + age_add + style_additions.get(style, "")
 
-def kb_age():
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🧒 До 13 лет", callback_data="age_child")],
-        [InlineKeyboardButton(text="🧑 13–17 лет", callback_data="age_teen")],
-        [InlineKeyboardButton(text="🧑‍🎓 18–25 лет", callback_data="age_young")],
-        [InlineKeyboardButton(text="🧑‍💼 26–45 лет", callback_data="age_adult")],
-        [InlineKeyboardButton(text="🧓 46–60 лет", callback_data="age_middle")],
-        [InlineKeyboardButton(text="👴 60+ лет", callback_data="age_older")],
-        [InlineKeyboardButton(text="🤐 Пропустить", callback_data="age_skip")],
-    ])
+# ===== КНОПКИ =====
 
 def kb_style():
     return InlineKeyboardMarkup(inline_keyboard=[
@@ -151,6 +191,8 @@ EX = {
     "relax": "💪 Релаксация\n\nНапряги и расслабь: кулаки, плечи, лицо, живот, ноги. Повтори 2-3 раза.",
 }
 
+# ===== КОМАНДЫ =====
+
 @dp.message(Command("start"))
 async def start(m: types.Message):
     HISTORY[m.chat.id].clear()
@@ -161,11 +203,21 @@ async def start(m: types.Message):
 @dp.message(Command("help"))
 async def help_cmd(m: types.Message):
     await m.answer(
-        "Что умею:\n"
+        "💡 Что я умею:\n\n"
+        "🆘 Если очень плохо\n"
+        "Напиши мне — я дам телефон доверия.\n\n"
+        "🌬 Упражнения от тревоги\n"
+        "/успокоиться — дыхание 4-4-4\n"
+        "/заземлиться — техника 5-4-3-2-1\n"
+        "/тело — сканирование тела\n"
+        "/релакс — прогрессивная релаксация\n\n"
         "🎤 Голосовые\n"
-        "🌬 /успокоиться\n🌳 /заземлиться\n🧘 /тело\n💪 /релакс\n"
-        "👤 /profile\n🧹 /reset\n\n"
-        "📞 Телефон доверия: 8-800-2000-122"
+        "Можешь отправить голосовое — я расшифрую и отвечу.\n\n"
+        "👤 /profile — что я о тебе знаю\n"
+        "🧹 /reset — начать разговор заново\n\n"
+        "📞 Телефон доверия: 8-800-2000-122\n"
+        "📞 Экстренные службы: 112\n\n"
+        "⚠️ Я не заменяю живого специалиста."
     )
 
 @dp.message(Command("profile"))
@@ -174,14 +226,18 @@ async def profile(m: types.Message):
     if not p:
         await m.answer("Пока ничего не знаю. /start")
         return
-    ages = {
-        "child": "до 13", "teen": "13–17", "young": "18–25",
-        "adult": "26–45", "middle": "46–60", "older": "60+", "unknown": "—"
-    }
     styles = {"soft": "мягко", "direct": "прямо", "humor": "с юмором"}
+    age = p.get("age", "—")
+    group_names = {
+        "child": "ребёнок", "teen": "подросток", "young": "молодой",
+        "adult": "взрослый", "middle": "средний возраст", "older": "старший возраст"
+    }
+    group = ""
+    if age != "—":
+        group = f" ({group_names.get(get_age_group(age), '')})"
     await m.answer(
         f"👤 Имя: {p.get('name', '—')}\n"
-        f"Возраст: {ages.get(p.get('age_group', 'unknown'), '—')}\n"
+        f"Возраст: {age}{group}\n"
         f"Стиль: {styles.get(p.get('style', 'soft'), '—')}"
     )
 
@@ -202,25 +258,28 @@ async def ex3(m: types.Message): await m.answer(EX["body"])
 @dp.message(Command("релакс"))
 async def ex4(m: types.Message): await m.answer(EX["relax"])
 
+# ===== CALLBACK =====
+
 @dp.callback_query()
 async def cb(c: CallbackQuery):
     d = c.data
     cid = c.message.chat.id
     await c.answer()
 
-    if d.startswith("age_"):
-        age = d.replace("age_", "")
-        if age != "skip":
-            PROFILES.setdefault(cid, {})["age_group"] = age
-        await c.message.answer("Отлично. Как предпочитаешь общаться?", reply_markup=kb_style())
-        return
-
     if d.startswith("style_"):
         st = d.replace("style_", "")
         PROFILES.setdefault(cid, {})["style"] = st
         ONBOARDED.add(cid)
         await c.message.answer(
-            "Спасибо! Я всё запомнил.\n\n"
+            "Спасибо! Я всё запомнил 🌿\n\n"
+            "💡 Что я умею:\n"
+            "• Просто поговорить и поддержать\n"
+            "• 🌬 /успокоиться — дыхание при тревоге\n"
+            "• 🌳 /заземлиться — техника 5-4-3-2-1\n"
+            "• 🧘 /тело — сканирование тела\n"
+            "• 💪 /релакс — прогрессивная релаксация\n"
+            "• 🎤 Можно отправлять голосовые\n"
+            "• 👤 /profile — что я о тебе знаю\n\n"
             "⚠️ Я — ИИ, не живой психолог. Если плохо — 8-800-2000-122.\n\n"
             "Как ты сейчас?",
             reply_markup=kb_main()
@@ -240,6 +299,8 @@ async def cb(c: CallbackQuery):
     }
     await process(c.message, prompts.get(d, "Мне нужна поддержка."))
 
+# ===== ОСНОВНАЯ ЛОГИКА =====
+
 async def process(m: types.Message, text: str):
     cid = m.chat.id
     if is_crisis(text):
@@ -248,7 +309,7 @@ async def process(m: types.Message, text: str):
     add_hist(cid, "user", text)
     await bot.send_chat_action(cid, "typing")
     p = PROFILES.get(cid, {})
-    sysmsg = sys_prompt(p.get("age_group", "unknown"), p.get("style", "soft"))
+    sysmsg = sys_prompt(p.get("age"), p.get("style", "soft"))
     if p.get("name"):
         sysmsg += f" Имя: {p['name']}."
     msgs = [{"role": "system", "content": sysmsg}] + HISTORY[cid]
@@ -269,6 +330,8 @@ async def process(m: types.Message, text: str):
         "Извини, все модели сейчас перегружены. Попробуй через минуту.\n\n"
         "Если плохо — 8-800-2000-122"
     )
+
+# ===== ГОЛОСОВЫЕ =====
 
 async def voice_txt(path: str) -> str:
     import base64
@@ -310,14 +373,52 @@ async def chat(m: types.Message):
     if not m.text:
         return
     cid = m.chat.id
+    p = PROFILES.setdefault(cid, {})
+
+    # Шаг 1: имя
     if cid not in ONBOARDED and len(HISTORY[cid]) == 0:
         name = m.text.strip()[:50]
-        PROFILES.setdefault(cid, {})["name"] = name
+        p["name"] = name
         HISTORY[cid].append({"role": "system", "content": f"Имя: {name}"})
         ONBOARDED.add(cid)
-        await m.answer(f"Приятно познакомиться, {name}! 🌿\n\nСколько тебе лет?", reply_markup=kb_age())
+        await m.answer(
+            f"Приятно познакомиться, {name}! 🌿\n\n"
+            "Сколько тебе лет? Напиши цифрой (например: 17 или 42).\n\n"
+            "Это поможет мне общаться с тобой комфортнее — под твой возраст."
+        )
         return
+
+    # Шаг 2: возраст
+    if cid not in ONBOARDED or "age" not in p:
+        age = parse_age(m.text)
+        if age is None:
+            await m.answer(
+                "Не понял возраст 🤔\n"
+                "Напиши просто цифрой, например: 15, 25, 40, 65."
+            )
+            return
+        p["age"] = age
+        # Определяем группу для приятного ответа
+        group = get_age_group(age)
+        group_replies = {
+            "child": "Понял! Буду говорить с тобой просто и понятно 🌟",
+            "teen": "Понял! Буду общаться с тобой по-дружески 🌿",
+            "young": "Понял! Будем общаться на равных 💬",
+            "adult": "Понял, спасибо 🌿",
+            "middle": "Понял, спасибо 🌿",
+            "older": "Понял, спасибо. Буду говорить уважительно и не спеша 🌿",
+        }
+        await m.answer(
+            f"{group_replies.get(group, 'Спасибо!')}\n\n"
+            f"Как ты предпочитаешь общаться?",
+            reply_markup=kb_style()
+        )
+        return
+
+    print(f"[MSG] {m.text[:50]}")
     await process(m, m.text)
+
+# ===== ВЕБ-СЕРВЕР =====
 
 async def handle(req):
     return web.Response(text="Bot is running!")
@@ -331,11 +432,9 @@ async def main():
     await web.TCPSite(runner, "0.0.0.0", port).start()
     print(f"=== WEB SERVER ON PORT {port} ===")
     
-    # ЖДЁМ, ЧТОБЫ СТАРЫЙ КОНТЕЙНЕР УМЕР
     print("=== ЖДУ 15 СЕКУНД, ЧТОБЫ СТАРЫЙ КОНТЕЙНЕР УМЕР ===")
     await asyncio.sleep(15)
     
-    # Удаляем вебхук, чтобы точно не было конфликтов
     try:
         await bot.delete_webhook(drop_pending_updates=True)
         print("=== ВЕБХУК УДАЛЁН ===")
